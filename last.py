@@ -1,6 +1,7 @@
 import asyncio
 from pyrogram import Client
 from pyrogram import Client, filters
+from pyrogram.types import ReplyKeyboardMarkup
 from pyrogram.errors import FloodWait, UserIsBlocked
 from random import randint
 from random_strings import random_string
@@ -17,6 +18,8 @@ from pyrogram.errors import FloodWait, UserIsBlocked, PeerIdInvalid, UserPrivacy
 from pyrogram.types import Message
 
 bot = Client('bot')
+buttons1 = [['/guide'], ['/bots_info'], ['/bots'], ['/logs']]
+
 
 logger.add('members.log', level="INFO")
 load_dotenv()
@@ -25,8 +28,15 @@ mydb = myclient["mydatabase"]
 accounts = mydb["accounts"]
 mb = pickledb.load('used_proxies.db', True)
 
+user_guide_text = """
+/add from_this_group to_this_group bot_number
+/delete user_id
+/id_find user_id
+/name_find username
+"""
 
-async def chat_add_people(bot_info, add_users : list, client_chat : str, soucre_chat : str, client_chat_participants : list, owner_id : int):
+
+async def chat_add_people(bot_info, add_users : list, client_chat : str, client_chat_participants : list, owner_id : int):
         proxies = mb.get("not_used")
         proxy = proxies.pop()
         mb.set("not_used", proxies)
@@ -36,15 +46,11 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, soucre_
         bot_name = bot_name.first_name
         print(f"bot_name - {bot_name}")
         bot_chats = [dialog.chat.username async for dialog in add_bot.get_dialogs()]
-        print(bot_chats[1])
         if client_chat not in bot_chats:
             print('adding to client chat')
             add_bot.join_chat(chat_id=client_chat)
             await asyncio.sleep(2)
-        if soucre_chat not in bot_chats:
-            print('adding to source chat')
-            add_bot.join_chat(chat_id=soucre_chat)
-            await asyncio.sleep(2)        
+  
         try:
             while add_users:
                 user_for_add = add_users.pop()
@@ -70,31 +76,31 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, soucre_
             unban_time = time.time() + ban_time
             accounts.update_one({"_id" : bot_info["_id"]}, {'$set' : {"Suspended" : True, "unban_time" : unban_time}})
             logger.error(f"{bot_name} banned for {ban_time}")
-            print(f"{bot_name} banned for {ban_time}")    
+            await bot.send_message(owner_id, f"{bot_name} banned for {e.value}")    
         except UserIsBlocked:
-            print(f"{bot_name} banned forever")
+            await bot.send_message(owner_id, f"{bot_name} banned forever")
             logger.error(f"{bot_name} banned forever")
             accounts.delete_one({"_id" : bot_info["_id"]})
         except UserDeactivated:
                 print('UserDeactivated')
                 accounts.delete_one({"_id" : bot_info["_id"]})
-                await bot.send_message(owner_id, 'Акаунт забанили')
+                await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
         except UserDeactivatedBan:
             print('UserDeactivatedBan')
             accounts.delete_one({"_id" : bot_info["_id"]})
-            await bot.send_message(owner_id, 'Акаунт забанили')
+            await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
         except AuthKeyInvalid:
             print('AuthKeyInvalid')
             accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
-            await bot.send_message(owner_id, 'Сесію розлогінили')
+            await bot.send_message(owner_id, f'Сесію розлогінили {bot_name}')
         except SessionRevoked:
             print('SessionRevoked')
             accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
-            await bot.send_message(owner_id, 'Сесію розлогінили')
+            await bot.send_message(owner_id, f'Сесію розлогінили {bot_name}')
         except AuthKeyUnregistered:
             print('AuthKeyUnregistered')
             accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
-            await bot.send_message(owner_id, 'Сесію розлогінили')
+            await bot.send_message(owner_id, f'Сесію розлогінили {bot_name}')
         except PeerFlood:
             if accounts.find_one({'_id' : bot_info['_id']})['flood'] == False:
                 accounts.update_one({"_id" : bot_info['_id']}, {"$set" : {"Suspended" : True, "unban_time" : 172800 + time.time()}, 'flood' : True})
@@ -104,7 +110,17 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, soucre_
         except Exception as e:
             print(e)
         await add_bot.stop()
-        print('finish')
+        await bot.send_message(owner_id, f'{bot_name} done')
+
+
+@bot.on_message(filters.command('get'))
+def firstcommand(bot, message):
+    text = 'below'
+    reply_markup = ReplyKeyboardMarkup(buttons1, one_time_keyboard=False, resize_keyboard=True)
+    message.reply(
+        text=text,
+        reply_markup = reply_markup
+    )
 
 
 @bot.on_message(filters.command(["add"]))
@@ -117,12 +133,12 @@ async def add_people2(client, message):
     app = Client("name", session_string=accounts.find_one({"Suspended" : False})['session_string'], api_id=1234)
     await app.start()
     chats = [dialog.chat.username async for dialog in app.get_dialogs()]
-    client_chat_participants = [i.user.id async for i in app.get_chat_members(chat_id=client_chat)]
     if source_chat not in chats:
         await app.join_chat(chat_id=source_chat)
     if client_chat not in chats:
         await app.join_chat(chat_id=client_chat)
     add_users = [i async for i in app.get_chat_members(chat_id=source_chat)]
+    client_chat_participants = [i.user.id async for i in app.get_chat_members(chat_id=client_chat)]
     await app.stop()
     print(add_users[0])
     print('tasks')
@@ -134,6 +150,37 @@ async def add_people2(client, message):
             tasks.append(chat_add_people(bot_info=bot_info, add_users=add_users, client_chat=client_chat, client_chat_participants=client_chat_participants, soucre_chat=source_chat, owner_id=message.chat.id))
         await asyncio.gather(*tasks)
     await main()
+
+
+@bot.on_message(filters.document & filters.command('add_txt'))
+async def text_add(client, message : Message):
+    data_list = message.caption.split(" ")[1:]
+    source_chat = data_list[0]
+    client_chat = data_list[1]
+    bots_num = int(data_list[2])
+    await bot.download_media(message=message, file_name = f"./{message.document.file_name}")
+    with open(message.document.file_name) as file:
+        lines = file.readlines()
+    file.close()
+    usernames_for_add = [i.replace('\n', '') for i in lines]
+    os.remove(message.document.file_name)
+    await bot.send_message(message.chat.id, text=f"{message.caption}, {message.document.file_name}, {message.document.file_size}")
+    app = Client("name", session_string=accounts.find_one({"Suspended" : False})['session_string'], api_id=1234)
+    await app.start()
+    chats = [dialog.chat.username async for dialog in app.get_dialogs()]
+    if client_chat not in chats:
+        await app.join_chat(chat_id=client_chat)
+    client_chat_participants = [i.user.id async for i in app.get_chat_members(chat_id=client_chat)]
+    await app.stop()
+    tasks = []
+    async def main():
+        print('async function start')
+        for bot_info in accounts.find({"Suspended": False}).limit(bots_num):
+            tasks.append(chat_add_people(bot_info=bot_info, add_users=usernames_for_add, client_chat=client_chat, client_chat_participants=client_chat_participants, soucre_chat=source_chat, owner_id=message.chat.id))
+        await asyncio.gather(*tasks)
+    await main()
+
+
 
 @bot.on_message(filters.document)
 async def loadsession(client, message):
@@ -164,7 +211,7 @@ async def loadsession(client, message):
             os.remove(f"./{message.document.file_name}")
 
 
-@bot.on_message(filters.command(["user_find"]))
+@bot.on_message(filters.command(["name_find"]))
 async def send_info(client, message):
     username = message.text.split(" ")[1]
     try:
@@ -179,11 +226,25 @@ date when he was added : {datetime.datetime.fromtimestamp(user["date"]).strftime
     except Exception as e:
         await bot.send_message(message.chat.id, text=f"It does not exist, {e}")
 
+@bot.on_message(filters.command(["id_find"]))
+async def send_info(client, message):
+    user_id = message.text.split(" ")[1]
+    try:
+        user = accounts.find_one({"telegram_id" : user_id})
+        mes = f"""
+I found him!
+Username : {user["username"]}
+phone number : {user["phone_number"]} 
+date when he was added : {datetime.datetime.fromtimestamp(user["date"]).strftime("%Y-%m-%d %H:%M:%S")}         
+               """
+        await bot.send_message(message.chat.id, text=mes)
+    except Exception as e:
+        await bot.send_message(message.chat.id, text=f"It does not exist, {e}")
 
-@bot.on_message(filters.command(["get_list"]))
+
+@bot.on_message(filters.command(["bots"]))
 async def sending_list(client, message):
-    settings = {"username" : 1}
-    users = accounts.find({}, settings)
+    users = list(accounts.find({}, {"username" : 1, "telegram_id" : 1}))
     await bot.send_message(message.chat.id, text="\n".join([f'{i+1}. {user["username"]}, `{user["telegram_id"]}`' for i, user in enumerate(users)]))
 
 
@@ -202,5 +263,8 @@ async def delete_user(client, message):
 async def get_logs(client : Client, message : Message):
     await bot.send_document(message.chat.id, document='members.log')
     
+@bot.on_message(filters.command(['guide']))
+async def send_guide(client, message : Message):
+    await bot.send_message(message.chat.id, text=user_guide_text)
 
 bot.run()
