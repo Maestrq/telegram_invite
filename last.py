@@ -113,6 +113,82 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, client_
         await bot.send_message(owner_id, f'{bot_name} done')
 
 
+async def chat_add_people_txt(bot_info, add_users : list, client_chat : str, client_chat_participants : list, owner_id : int):
+        proxies = mb.get("not_used")
+        proxy = proxies.pop()
+        mb.set("not_used", proxies)
+        add_bot = Client(random_string(10), session_string=bot_info["session_string"], api_id=1234)
+        await add_bot.start()
+        bot_name = await add_bot.get_me()
+        bot_name = bot_name.first_name
+        print(f"bot_name - {bot_name}")
+        bot_chats = [dialog.chat.username async for dialog in add_bot.get_dialogs()]
+        if client_chat not in bot_chats:
+            print('adding to client chat')
+            add_bot.join_chat(chat_id=client_chat)
+            await asyncio.sleep(2)
+  
+        try:
+            while add_users:
+                user_for_add = add_users.pop()
+                if user_for_add not in client_chat_participants:
+                    try:
+                        await add_bot.add_chat_members(chat_id=client_chat, user_ids=[user_for_add.user.username])
+                        logger.info(f"{bot_name} added {user_for_add.user.first_name}")
+                    except UserPrivacyRestricted:  #The user’s privacy settings is preventing you to perform this action | Обмежив додавання 
+                        logger.error(f"{user_for_add.user.first_name} failed attempt, adding probably disabled ({bot_name})")
+                    except PeerIdInvalid as e: # The peer id being used is invalid or not known yet. Make sure you meet the peer before interacting with it
+                        print(e)
+                    except UserNotMutualContact:   # The provided user is not a mutual contact | Наданий користувач не є взаємним контактом
+                        logger.error(f"{user_for_add.user.first_name} failed attempt, The provided user is not a mutual contact ({bot_name})")
+                    except UserChannelsTooMuch:
+                        logger.error(f"{user_for_add.user.first_name} failed attempt, user have too much channels ({bot_name})")
+                    finally:
+                        await asyncio.sleep(randint(3,9))
+                        client_chat_participants.append(user_for_add.user.id)
+        except FloodWait as e:
+            print(e.value)
+            ban_time = e.value + e.value / 100 * randint(5, 20)
+            unban_time = time.time() + ban_time
+            accounts.update_one({"_id" : bot_info["_id"]}, {'$set' : {"Suspended" : True, "unban_time" : unban_time}})
+            logger.error(f"{bot_name} banned for {ban_time}")
+            await bot.send_message(owner_id, f"{bot_name} banned for {e.value}")    
+        except UserIsBlocked:
+            await bot.send_message(owner_id, f"{bot_name} banned forever")
+            logger.error(f"{bot_name} banned forever")
+            accounts.delete_one({"_id" : bot_info["_id"]})
+        except UserDeactivated:
+                print('UserDeactivated')
+                accounts.delete_one({"_id" : bot_info["_id"]})
+                await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
+        except UserDeactivatedBan:
+            print('UserDeactivatedBan')
+            accounts.delete_one({"_id" : bot_info["_id"]})
+            await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
+        except AuthKeyInvalid:
+            print('AuthKeyInvalid')
+            accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
+            await bot.send_message(owner_id, f'Сесію розлогінили {bot_name}')
+        except SessionRevoked:
+            print('SessionRevoked')
+            accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
+            await bot.send_message(owner_id, f'Сесію розлогінили {bot_name}')
+        except AuthKeyUnregistered:
+            print('AuthKeyUnregistered')
+            accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
+            await bot.send_message(owner_id, f'Сесію розлогінили {bot_name}')
+        except PeerFlood:
+            if accounts.find_one({'_id' : bot_info['_id']})['flood'] == False:
+                accounts.update_one({"_id" : bot_info['_id']}, {"$set" : {"Suspended" : True, "unban_time" : 172800 + time.time()}, 'flood' : True})
+            else:
+                accounts.delete_one({'_id' : bot_info['_id']})
+                await bot.send_message(owner_id, text=f"{bot_name} spamblock")
+        except Exception as e:
+            print(e)
+        await add_bot.stop()
+        await bot.send_message(owner_id, f'{bot_name} done')
+
+
 @bot.on_message(filters.command('get'))
 def firstcommand(bot, message):
     text = 'below'
@@ -170,13 +246,13 @@ async def text_add(client, message : Message):
     chats = [dialog.chat.username async for dialog in app.get_dialogs()]
     if client_chat not in chats:
         await app.join_chat(chat_id=client_chat)
-    client_chat_participants = [i.user.id async for i in app.get_chat_members(chat_id=client_chat)]
+    client_chat_participants = [i.user.username async for i in app.get_chat_members(chat_id=client_chat)]
     await app.stop()
     tasks = []
     async def main():
         print('async function start')
         for bot_info in accounts.find({"Suspended": False}).limit(bots_num):
-            tasks.append(chat_add_people(bot_info=bot_info, add_users=usernames_for_add, client_chat=client_chat, client_chat_participants=client_chat_participants, soucre_chat=source_chat, owner_id=message.chat.id))
+            tasks.append(chat_add_people_txt(bot_info=bot_info, add_users=usernames_for_add, client_chat=client_chat, client_chat_participants=client_chat_participants, soucre_chat=source_chat, owner_id=message.chat.id))
         await asyncio.gather(*tasks)
     await main()
 
