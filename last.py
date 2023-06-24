@@ -30,9 +30,11 @@ mb = pickledb.load('used_proxies.db', True)
 
 user_guide_text = """
 /add from_this_group to_this_group bot_number
+/add_txt to_this_group bot_number #send with file
 /delete user_id
 /id_find user_id
 /name_find username
+/add_session      #send with file
 """
 
 
@@ -41,17 +43,16 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, client_
         proxy = proxies.pop()
         mb.set("not_used", proxies)
         add_bot = Client(random_string(10), session_string=bot_info["session_string"], api_id=1234)
-        await add_bot.start()
-        bot_name = await add_bot.get_me()
-        bot_name = bot_name.first_name
-        print(f"bot_name - {bot_name}")
-        bot_chats = [dialog.chat.username async for dialog in add_bot.get_dialogs()]
-        if client_chat not in bot_chats:
-            print('adding to client chat')
-            add_bot.join_chat(chat_id=client_chat)
-            await asyncio.sleep(2)
-  
         try:
+            await add_bot.start()
+            bot_name = await add_bot.get_me()
+            bot_name = bot_name.first_name
+            print(f"bot_name - {bot_name}")
+            bot_chats = [dialog.chat.username async for dialog in add_bot.get_dialogs()]
+            if client_chat not in bot_chats:
+                print('adding to client chat')
+                add_bot.join_chat(chat_id=client_chat)
+                await asyncio.sleep(2)
             while add_users:
                 user_for_add = add_users.pop()
                 if user_for_add.user.id not in client_chat_participants:
@@ -118,34 +119,33 @@ async def chat_add_people_txt(bot_info, add_users : list, client_chat : str, cli
         proxy = proxies.pop()
         mb.set("not_used", proxies)
         add_bot = Client(random_string(10), session_string=bot_info["session_string"], api_id=1234)
-        await add_bot.start()
-        bot_name = await add_bot.get_me()
-        bot_name = bot_name.first_name
-        print(f"bot_name - {bot_name}")
-        bot_chats = [dialog.chat.username async for dialog in add_bot.get_dialogs()]
-        if client_chat not in bot_chats:
-            print('adding to client chat')
-            add_bot.join_chat(chat_id=client_chat)
-            await asyncio.sleep(2)
-  
         try:
+            await add_bot.start()
+            bot_name = await add_bot.get_me()
+            bot_name = bot_name.first_name
+            print(f"bot_name - {bot_name}")
+            bot_chats = [dialog.chat.username async for dialog in add_bot.get_dialogs()]
+            if client_chat not in bot_chats:
+                print('adding to client chat')
+                add_bot.join_chat(chat_id=client_chat)
+                await asyncio.sleep(2)
             while add_users:
                 user_for_add = add_users.pop()
                 if user_for_add not in client_chat_participants:
                     try:
-                        await add_bot.add_chat_members(chat_id=client_chat, user_ids=[user_for_add.user.username])
-                        logger.info(f"{bot_name} added {user_for_add.user.first_name}")
+                        await add_bot.add_chat_members(chat_id=client_chat, user_ids=[user_for_add])
+                        logger.info(f"{bot_name} added {user_for_add}")
                     except UserPrivacyRestricted:  #The user’s privacy settings is preventing you to perform this action | Обмежив додавання 
-                        logger.error(f"{user_for_add.user.first_name} failed attempt, adding probably disabled ({bot_name})")
+                        logger.error(f"{user_for_add} failed attempt, adding probably disabled ({bot_name})")
                     except PeerIdInvalid as e: # The peer id being used is invalid or not known yet. Make sure you meet the peer before interacting with it
                         print(e)
                     except UserNotMutualContact:   # The provided user is not a mutual contact | Наданий користувач не є взаємним контактом
-                        logger.error(f"{user_for_add.user.first_name} failed attempt, The provided user is not a mutual contact ({bot_name})")
+                        logger.error(f"{user_for_add} failed attempt, The provided user is not a mutual contact ({bot_name})")
                     except UserChannelsTooMuch:
-                        logger.error(f"{user_for_add.user.first_name} failed attempt, user have too much channels ({bot_name})")
+                        logger.error(f"{user_for_add} failed attempt, user have too much channels ({bot_name})")
                     finally:
                         await asyncio.sleep(randint(3,9))
-                        client_chat_participants.append(user_for_add.user.id)
+                        client_chat_participants.append(user_for_add)
         except FloodWait as e:
             print(e.value)
             ban_time = e.value + e.value / 100 * randint(5, 20)
@@ -190,7 +190,7 @@ async def chat_add_people_txt(bot_info, add_users : list, client_chat : str, cli
 
 
 @bot.on_message(filters.command('get'))
-def firstcommand(bot, message):
+def firstcommand(client, message):
     text = 'below'
     reply_markup = ReplyKeyboardMarkup(buttons1, one_time_keyboard=False, resize_keyboard=True)
     message.reply(
@@ -231,9 +231,9 @@ async def add_people2(client, message):
 @bot.on_message(filters.document & filters.command('add_txt'))
 async def text_add(client, message : Message):
     data_list = message.caption.split(" ")[1:]
-    source_chat = data_list[0]
-    client_chat = data_list[1]
-    bots_num = int(data_list[2])
+    # /add_txt your_chat bots_num
+    client_chat = data_list[0]
+    bots_num = int(data_list[1])
     await bot.download_media(message=message, file_name = f"./{message.document.file_name}")
     with open(message.document.file_name) as file:
         lines = file.readlines()
@@ -252,13 +252,13 @@ async def text_add(client, message : Message):
     async def main():
         print('async function start')
         for bot_info in accounts.find({"Suspended": False}).limit(bots_num):
-            tasks.append(chat_add_people_txt(bot_info=bot_info, add_users=usernames_for_add, client_chat=client_chat, client_chat_participants=client_chat_participants, soucre_chat=source_chat, owner_id=message.chat.id))
+            tasks.append(chat_add_people_txt(bot_info=bot_info, add_users=usernames_for_add, client_chat=client_chat, client_chat_participants=client_chat_participants, owner_id=message.chat.id))
         await asyncio.gather(*tasks)
     await main()
 
 
 
-@bot.on_message(filters.document)
+@bot.on_message(filters.document & filters.command('add_session'))
 async def loadsession(client, message):
     file_path = f"./{message.document.file_name}"
     if message.document.file_name.endswith('.session'):
