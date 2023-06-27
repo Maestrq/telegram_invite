@@ -39,10 +39,7 @@ user_guide_text = """
 
 
 async def chat_add_people(bot_info, add_users : list, client_chat : str, client_chat_participants : list, owner_id : int):
-        proxies = mb.get("not_used")
-        proxy = proxies.pop()
-        mb.set("not_used", proxies)
-        add_bot = Client(random_string(10), session_string=bot_info["session_string"], api_id=1234)
+        add_bot = Client(random_string(10), session_string=bot_info["session_string"], api_id=1234, proxy=bot_info['proxy'])
         try:
             await add_bot.start()
             bot_name = await add_bot.get_me()
@@ -82,14 +79,23 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, client_
             await bot.send_message(owner_id, f"{bot_name} banned forever")
             logger.error(f"{bot_name} banned forever")
             accounts.delete_one({"_id" : bot_info["_id"]})
+            proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+            mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+            mb.ladd('not_used', proxy_num)
         except UserDeactivated:
                 print('UserDeactivated')
                 accounts.delete_one({"_id" : bot_info["_id"]})
                 await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
+                proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+                mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+                mb.ladd('not_used', proxy_num)
         except UserDeactivatedBan:
             print('UserDeactivatedBan')
             accounts.delete_one({"_id" : bot_info["_id"]})
             await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
+            proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+            mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+            mb.ladd('not_used', proxy_num)
         except AuthKeyInvalid:
             print('AuthKeyInvalid')
             accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
@@ -108,6 +114,9 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, client_
             else:
                 accounts.delete_one({'_id' : bot_info['_id']})
                 await bot.send_message(owner_id, text=f"{bot_name} spamblock")
+                proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+                mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+                mb.ladd('not_used', proxy_num)
         except Exception as e:
             print(e)
         await add_bot.stop()
@@ -115,10 +124,7 @@ async def chat_add_people(bot_info, add_users : list, client_chat : str, client_
 
 
 async def chat_add_people_txt(bot_info, add_users : list, client_chat : str, client_chat_participants : list, owner_id : int):
-        proxies = mb.get("not_used")
-        proxy = proxies.pop()
-        mb.set("not_used", proxies)
-        add_bot = Client(random_string(10), session_string=bot_info["session_string"], api_id=1234)
+        add_bot = Client(random_string(10), session_string=bot_info["session_string"], api_id=1234, proxy=bot_info['proxy'])
         try:
             await add_bot.start()
             bot_name = await add_bot.get_me()
@@ -157,14 +163,23 @@ async def chat_add_people_txt(bot_info, add_users : list, client_chat : str, cli
             await bot.send_message(owner_id, f"{bot_name} banned forever")
             logger.error(f"{bot_name} banned forever")
             accounts.delete_one({"_id" : bot_info["_id"]})
+            proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+            mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+            mb.ladd('not_used', proxy_num)
         except UserDeactivated:
                 print('UserDeactivated')
                 accounts.delete_one({"_id" : bot_info["_id"]})
                 await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
+                proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+                mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+                mb.ladd('not_used', proxy_num)
         except UserDeactivatedBan:
             print('UserDeactivatedBan')
             accounts.delete_one({"_id" : bot_info["_id"]})
             await bot.send_message(owner_id, f'{bot_name} Акаунт забанили')
+            proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+            mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+            mb.ladd('not_used', proxy_num)
         except AuthKeyInvalid:
             print('AuthKeyInvalid')
             accounts.update_one({"_id": bot_info['_id']}, {"$set": {'Suspended': True}})
@@ -183,6 +198,9 @@ async def chat_add_people_txt(bot_info, add_users : list, client_chat : str, cli
             else:
                 accounts.delete_one({'_id' : bot_info['_id']})
                 await bot.send_message(owner_id, text=f"{bot_name} spamblock")
+                proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+                mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+                mb.ladd('not_used', proxy_num)
         except Exception as e:
             print(e)
         await add_bot.stop()
@@ -190,10 +208,10 @@ async def chat_add_people_txt(bot_info, add_users : list, client_chat : str, cli
 
 
 @bot.on_message(filters.command('get'))
-def firstcommand(client, message):
+async def firstcommand(client, message):
     text = 'below'
     reply_markup = ReplyKeyboardMarkup(buttons1, one_time_keyboard=False, resize_keyboard=True)
-    message.reply(
+    await message.reply(
         text=text,
         reply_markup = reply_markup
     )
@@ -206,7 +224,8 @@ async def add_people2(client, message):
     source_chat = data_list[0]
     client_chat = data_list[1]
     bots_num = int(data_list[2])
-    app = Client("name", session_string=accounts.find_one({"Suspended" : False})['session_string'], api_id=1234)
+    bot_info = accounts.find_one({"Suspended" : False})
+    app = Client("name", session_string=bot_info['session_string'], api_id=1234, proxy=bot_info['proxy'])
     await app.start()
     chats = [dialog.chat.username async for dialog in app.get_dialogs()]
     if source_chat not in chats:
@@ -241,7 +260,8 @@ async def text_add(client, message : Message):
     usernames_for_add = [i.replace('\n', '') for i in lines]
     os.remove(message.document.file_name)
     await bot.send_message(message.chat.id, text=f"{message.caption}, {message.document.file_name}, {message.document.file_size}")
-    app = Client("name", session_string=accounts.find_one({"Suspended" : False})['session_string'], api_id=1234)
+    bot_info = accounts.find_one({"Suspended" : False})
+    app = Client("name", session_string=bot_info['session_string'], api_id=1234, proxy=bot_info['proxy'])
     await app.start()
     chats = [dialog.chat.username async for dialog in app.get_dialogs()]
     if client_chat not in chats:
@@ -251,7 +271,7 @@ async def text_add(client, message : Message):
     tasks = []
     async def main():
         print('async function start')
-        for bot_info in accounts.find({"Suspended": False}).limit(bots_num):
+        for bot_info in accounts.find({"Suspended" : False}).limit(bots_num):
             tasks.append(chat_add_people_txt(bot_info=bot_info, add_users=usernames_for_add, client_chat=client_chat, client_chat_participants=client_chat_participants, owner_id=message.chat.id))
         await asyncio.gather(*tasks)
     await main()
@@ -265,19 +285,34 @@ async def loadsession(client, message):
         await bot.download_media(message=message, file_name = file_path)
         session_name = str(message.document.file_name).replace('.session', '')
         await bot.send_message(message.chat.id, text=f"{session_name} was saved, trying to add user")   
+
         try:
-            app = Client(session_name, api_id=1234)
+            proxies = mb.lgetall("not_used")
+            proxy_num = proxies.pop()
+            mb.ladd("currently_using", proxy_num)
+            #mb.lpop('not_used', mb.lgetall('not_used').index(proxy_num))
+            proxy = {
+                "scheme": "socks5",
+                "hostname": "p.webshare.io",
+                "port": 80,
+                "username": "kxlophmv-" + str(proxy_num),
+                "password": "6qtoyddfn5zh"
+                }
+            print(proxy)
+            app = Client(session_name, api_id=1234, proxy=proxy)
             await app.start()
             await bot.send_message(message.chat.id, text=f"User was added to active users!\n {await app.get_me()}")
             user_data = await app.get_me()
             session_str = await app.export_session_string()
+
             user_data_for_send = {"username" : user_data.first_name,
                                   "phone_number" : user_data.phone_number,
                                   "session_string" : str(session_str),
                                   "date" : time.time(),
                                   "Suspended" : False,
                                   "telegram_id" : user_data.id,
-                                  "flood" : False
+                                  "flood" : False,
+                                  "proxy" : proxy
                                   }
             await app.stop()
             accounts.insert_one(user_data_for_send)
@@ -332,8 +367,12 @@ async def avaliable_or_not(client, message):
 @bot.on_message(filters.command(['delete']))
 async def delete_user(client, message):
     for_delete = message.text.split(' ')[1]
+    bot_info = accounts.find_one({'telegram_id' : for_delete})
     accounts.delete_one({'telegram_id' : for_delete})
     await bot.send_message(message.chat.id, text=f'account {for_delete} deleted ')
+    proxy_num = int(bot_info['proxy']['username'].split('-')[1])
+    mb.lpop('currently_using', mb.lgetall('currently_using').index(proxy_num))
+    mb.ladd('not_used', proxy_num)
 
 @bot.on_message(filters.command(['logs']))
 async def get_logs(client : Client, message : Message):
